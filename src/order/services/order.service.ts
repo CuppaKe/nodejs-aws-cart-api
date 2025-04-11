@@ -1,50 +1,51 @@
 import { Injectable } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+
 import { Order } from '../models';
-import { CreateOrderPayload, OrderStatus } from '../type';
+import { CreateOrderPayload } from '../type';
+import { Order as OrderEntity, OrderStatus } from '../entities/index';
 
 @Injectable()
 export class OrderService {
-  private orders: Record<string, Order> = {};
+  constructor(
+    @InjectRepository(OrderEntity)
+    private readonly orderRepository: Repository<OrderEntity>,
+  ) {}
 
-  getAll() {
-    return Object.values(this.orders);
+  async getAll(): Promise<OrderEntity[]> {
+    return await this.orderRepository.find();
   }
 
-  findById(orderId: string): Order {
-    return this.orders[orderId];
+  async findById(orderId: string): Promise<OrderEntity> {
+    return await this.orderRepository.findOne({
+      where: { id: orderId },
+    });
   }
 
-  create(data: CreateOrderPayload) {
-    const id = randomUUID() as string;
-    const order: Order = {
-      id,
+  async create(data: CreateOrderPayload) {
+    const order = await this.orderRepository.create({
       ...data,
-      statusHistory: [
-        {
-          comment: '',
-          status: OrderStatus.Open,
-          timestamp: Date.now(),
-        },
-      ],
-    };
+      cart: { id: data.cartId },
+      payment: {},
+      delivery: data.address,
+      comments: '',
+      status: OrderStatus.PENDING,
+      total: data.total,
+    });
 
-    this.orders[id] = order;
-
-    return order;
+    return await this.orderRepository.save(order);
   }
 
   // TODO add  type
-  update(orderId: string, data: Order) {
-    const order = this.findById(orderId);
+  async update(orderId: string, data: Order) {
+    const order = await this.findById(orderId);
 
     if (!order) {
       throw new Error('Order does not exist.');
     }
 
-    this.orders[orderId] = {
-      ...data,
-      id: orderId,
-    };
+    this.orderRepository.save({ ...order, ...data });
   }
 }
